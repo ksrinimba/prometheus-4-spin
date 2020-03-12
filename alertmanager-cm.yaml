@@ -1,0 +1,43 @@
+apiVersion: v1
+data:
+  alertmanager.yml: |
+    global: 
+      smtp_smarthost: 'smtp.vodafone.de:587'
+      smtp_from: 'ksrini_mba@vodafone.de'
+      smtp_auth_username: 'ksrini_mba@vodafone.de'
+      smtp_auth_password: 'Kambh12#'
+    receivers:
+    - name: opsmx_alert_receivers
+      email_configs:
+      - to: srinivas@opsmx.io
+        send_resolved: true
+        text: " \nsummary: {{ .CommonAnnotations.summary }}\ndescription: {{ .CommonAnnotations.description }}" 
+      slack_configs:
+      - api_url: https://hooks.slack.com/services/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
+        icon_url: https://avatars3.githubusercontent.com/u/3380462
+        send_resolved: true
+        text: " \nsummary: {{ .CommonAnnotations.summary }}\ndescription: {{ .CommonAnnotations.description }}"
+    - name: opsmx_email_only
+      email_configs:
+      - to: ksrinimba@gmail.com
+        send_resolved: true
+        text: " \nsummary: {{ .CommonAnnotations.summary }}\ndescription: {{ .CommonAnnotations.description }}" 
+    route:
+      group_interval: 1m # Changed from 5m
+      group_wait: 10s
+      repeat_interval: 1m # Was set to 3h, changed for testing
+      receiver: opsmx_alert_receivers
+      routes:
+      - match: 
+          severity: warning
+        receiver: opsmx_email_only
+kind: ConfigMap
+metadata:
+  labels:
+    app: prometheus
+    chart: prometheus-10.4.0
+    component: alertmanager
+    heritage: Helm
+    release: prometheus-1582014510
+  name: prometheus-1582014510-alertmanager
+  namespace: srini
