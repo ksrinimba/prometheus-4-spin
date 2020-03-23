@@ -38,6 +38,6 @@ metadata:
     chart: prometheus-10.4.0
     component: alertmanager
     heritage: Helm
-    release: prometheus-1582014510
-  name: prometheus-1582014510-alertmanager
+    release: prometheus-1584018984
+  name: prometheus-1584018984-alertmanager
   namespace: srini
