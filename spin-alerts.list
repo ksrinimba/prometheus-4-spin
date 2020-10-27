@@ -168,7 +168,7 @@
           summary: latency of gate is too high
         expr: sum(rate(gate:controller:invocations__count_total{service="spin-gate",statusCode="200"}[2m]))
           by (instance, method)/ sum(rate(gate:controller:invocations__total{service="spin-gate",statusCode="200"}[2m]))
-          by (instance, method) > 200
+          by (instance, method) > 5000
         for: 5m
         labels:
           severity: warning
@@ -198,7 +198,7 @@
           summary: latency of echo is too high
         expr: sum(rate(echo:controller:invocations__count_total{service="spin-echo",statusCode="200"}[2m]))
           by (instance, method)/ sum(rate(echo:controller:invocations__total{service="spin-echo",statusCode="200"}[2m]))
-          by (instance, method) > 600
+          by (instance, method) > 6000
         for: 5m
         labels:
           severity: warning
@@ -228,7 +228,7 @@
           summary: 'latency of front50 is too high'
         expr: sum(rate(front50:controller:invocations__count_total{service="spin-front50",statusCode="200"}[2m]))
           by (instance, method)/ sum(rate(front50:controller:invocations__total{service="spin-front50",statusCode="200"}[2m]))
-          by (instance, method) > 1000
+          by (instance, method) > 1200
         for: 5m
         labels:
           severity: warning
@@ -321,7 +321,7 @@
         annotations:
           description: "Service {{$labels.service}} execution time too high"
           summary: "Clouddriver:executiontime is high"
-        expr: sum(rate(clouddriver:executionTime__total[2m])) by (instance, agent) / sum(rate(clouddriver:executionTime__count_total[2m])) by (instance, agent) > 50
+        expr: sum(rate(clouddriver:executionTime__total[2m])) by (instance, agent) / sum(rate(clouddriver:executionTime__count_total[2m])) by (instance, agent) > 100
         for: 2m
         labels:
           severity: warning
@@ -354,7 +354,7 @@
         annotations:
           description: "Median gate response too slow"
           summary: "50 percentile value is {{ $value }}"
-        expr: gate:hystrix:latencyTotal__percentile_50__value > 400
+        expr: gate:hystrix:latencyTotal__percentile_50__value > 1600
         for: 5m
         labels:
           severity: critical
@@ -362,7 +362,7 @@
         annotations:
           description: "gate response slow"
           summary: "90 percentile value is {{ $value }}"
-        expr: gate:hystrix:latencyTotal__percentile_90__value > 600
+        expr: gate:hystrix:latencyTotal__percentile_90__value > 2000
         for: 5m
         labels:
           severity: warning
