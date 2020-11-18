@@ -402,3 +402,78 @@
         expr: igor:pollingMonitor:itemsOverThreshold > 0
         labels:
           severity: crtical
+# okhttp alerts
+#  - name: clouddriver-okhttp
+#      rules:
+#      - alert: clouddriver-okhttp
+#        annotations:
+#          description: clouddriver needs attention
+#          summary: clouddriver needs attention
+#        expr: sum(rate(clouddriver:okhttp:requests__count_total{service="spin-clouddriver",statusCode="200"}[2m])) by (instance, method) / 
+#          sum(rate(clouddriver:okhttp:requests__total{service="spin-clouddriver",statusCode="200"}[2m])) by (instance, method) > 100
+#        labels:
+#          severity: warning
+#    - name: echo-okhttp
+#      rules:
+#      - alert: echo-okhttp
+#        annotations:
+#          description: echo needs attention
+#          summary: echo needs attention
+#        expr: sum(rate(echo:okhttp:requests__count_total{service="spin-echo",statusCode="200"}[2m])) by (instance, method) /
+#          sum(rate(echo:okhttp:requests__total{service="spin-echo",statusCode="200"}[2m])) by (instance, method) > 50
+#        labels:
+#          severity: warning
+#    - name: fiat-okhttp
+#      rules:
+#      - alert: fiat-okhttp
+#        annotations:
+#          description: fiat needs attention
+#          summary: fiat needs attention
+#        expr: sum(rate(fiat:okhttp:requests__count_total{service="spin-fiat",statusCode="200"}[2m])) by (instance, method) /
+#          sum(rate(fiat:okhttp:requests__total{service="spin-fiat",statusCode="200"}[2m])) by (instance, method) > 20
+#        labels:
+#          severity: warning
+#    - name: gate-okhttp
+#      rules:
+#      - alert: gate-okhttp
+#        annotations:
+#          description: gate needs attention
+#          summary: gate needs attention
+#        expr: sum(rate(gate:okhttp:requests__count_total{service="spin-gate",statusCode="200"}[2m])) by (instance, method) /
+#          sum(rate(gate:okhttp:requests__total{service="spin-gate",statusCode="200"}[2m])) by (instance, method) > 20 
+#        labels:
+#          severity: warning
+#    - name: igor-okhttp
+#      rules:
+#      - alert: igor-okhttp
+#        annotations:
+#          description: igor needs attention
+#          summary: igor needs attention
+#        expr: sum(rate(igor:okhttp:requests__count_total{service="spin-igor",statusCode="200"}[2m])) by (instance, method) /
+#          sum(rate(igor:okhttp:requests__total{service="spin-igor",statusCode="200"}[2m])) by (instance, method) > 30
+#        labels:
+#          severity: warning
+#    - name: orca-okhttp
+#      rules:
+#      - alert: orca-okhttp
+#        annotations:
+#          description: orca needs attention
+#          summary: orca needs attention
+#        expr: sum(rate(orca:okhttp:requests__count_total{service="spin-orca",statusCode="200"}[2m])) by (instance, method) /
+#          sum(rate(orca:okhttp:requests__total{service="spin-orca",statusCode="200"}[2m])) by (instance, method) > 100
+#        labels:
+#          severity: warning
+#    - name: rosco-okhttp
+#      rules:
+#      - alert: rosco-okhttp
+#        annotations:
+#          description: roscoin needs attention
+#          summary: rosco needs attention
+#        expr: sum(rate(front50:okhttp:requests__count_total{service="spin-front50",statusCode="200"}[2m])) by (instance, method)/ 
+#          sum(rate(front50:okhttp:requests__total{service="spin-front50",statusCode="200"}[2m])) by (instance, method) > 50
+#        labels:
+#          severity: warning
+
+
+
+
