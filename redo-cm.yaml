@@ -1,74 +1,303 @@
 apiVersion: v1
 data:
-  alerting_rules.yml: "groups:\n- name: spinnaker-services-is-down\n  rules:\n  -
-    alert: spin-is-down\n    expr: absent(up{job=\"opsmx_spinnaker_metrics\"}) ==
-    1  \n    labels:\n      severity: critical\n    annotations:\n      description:
-    \"{{ $labels.service }} appears to be down for more 1 min {{ $value }})\"\n      summary:
-    One or more Spinnaker services are down \n- name: gate-latency-too-high\n  rules:\n
-    \ - alert: gate-invocations-increasing-too-fast\n    expr: sum (rate(gate:controller:invocations__percentile_total[2m]))
-    > 0.95\n    labels:\n      severity: warning\n    annotations:\n      description:
-    \"{{ $labels.instance }} invocation latency too high {{ $value }}) > 0.35\"\n
-    \     summary: gate-invocations-increasing-too-fast\n- name: clouddriver-latency-too-high\n
-    \ rules:\n  - alert: clouddriver-latency-too-high\n    expr: sum(rate(clouddriver:executionTime__totalTime_total[5m]))
-    by (instance) / sum(rate(clouddriver:executionTime__count_total[5m])) by (instance)
-    > 70000000000\n    labels:\n      severity: severe\n    annotations:\n      description:
-    \"{{ $labels.instance }} invocation latency too high {{ $value }}) > 700000000\"\n
-    \     summary: Cloud Driver responding too slowly\n"
+  alerting_rules.yml: |
+    {}
   alerts: |
     {}
   prometheus.yml: |
     global:
       evaluation_interval: 1m
-      scrape_interval: 5s
-      scrape_timeout: 2s
+      scrape_interval: 1m
+      scrape_timeout: 10s
     rule_files:
     - /etc/config/recording_rules.yml
     - /etc/config/alerting_rules.yml
     - /etc/config/rules
     - /etc/config/alerts
+    - /etc/alerts.d/node_alerting_rules.yml
+    - /etc/alerts.d/pod_alerting_rules.yml
     scrape_configs:
-    - job_name: opsmx_spinnaker_metrics
-      honor_labels: true
-      metrics_path: /prometheus_metrics
+    - honor_labels: true
+      job_name: opsmx_spinnaker_metrics
       kubernetes_sd_configs:
       - role: endpoints
-        namespaces:
-          names:
-            - spin-srini
+      metrics_path: /prometheus_metrics
       relabel_configs:
-        - action: keep
-          source_labels:
-          - __meta_kubernetes_service_label_app
-          regex: spin
-        - action: keep
-          source_labels:
-          - __meta_kubernetes_pod_container_port_number
-          regex: "8008"
-        - source_labels:
-          - __meta_kubernetes_endpoint_address_target_kind
-          - __meta_kubernetes_endpoint_address_target_name
-          separator: ;
-          regex: Node;(.*)
-          replacement: ${1}
-          target_label: node
-        - source_labels:
-          - __meta_kubernetes_endpoint_address_target_kind
-          - __meta_kubernetes_endpoint_address_target_name
-          separator: ;
-          regex: Pod;(.*)
-          replacement: ${1}
-          target_label: pod
-        - source_labels:
-          - __meta_kubernetes_namespace
-          target_label: namespace
-        - source_labels:
-          - __meta_kubernetes_service_name
-          target_label: service
-        - source_labels:
-          - __meta_kubernetes_pod_name
-          target_label: pod
-        - target_label: endpoint
-          replacement: "8008"
+      - action: keep
+        regex: spin
+        source_labels:
+        - __meta_kubernetes_service_label_app
+      - action: keep
+        regex: "8008"
+        source_labels:
+        - __meta_kubernetes_pod_container_port_number
+      - regex: Node;(.*)
+        replacement: ${1}
+        separator: ;
+        source_labels:
+        - __meta_kubernetes_endpoint_address_target_kind
+        - __meta_kubernetes_endpoint_address_target_name
+        target_label: node
+      - regex: Pod;(.*)
+        replacement: ${1}
+        separator: ;
+        source_labels:
+        - __meta_kubernetes_endpoint_address_target_kind
+        - __meta_kubernetes_endpoint_address_target_name
+        target_label: pod
+      - source_labels:
+        - __meta_kubernetes_namespace
+        target_label: namespace
+      - source_labels:
+        - __meta_kubernetes_service_name
+        target_label: service
+      - source_labels:
+        - __meta_kubernetes_pod_name
+        target_label: pod
+      - replacement: "8008"
+        target_label: endpoint
+    - job_name: prometheus
+      static_configs:
+      - targets:
+        - localhost:9090
+    - bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      job_name: kubernetes-apiservers
+      kubernetes_sd_configs:
+      - role: endpoints
+      relabel_configs:
+      - action: keep
+        regex: default;kubernetes;https
+        source_labels:
+        - __meta_kubernetes_namespace
+        - __meta_kubernetes_service_name
+        - __meta_kubernetes_endpoint_port_name
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        insecure_skip_verify: true
+    - bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      job_name: kubernetes-nodes
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - replacement: kubernetes.default.svc:443
+        target_label: __address__
+      - regex: (.+)
+        replacement: /api/v1/nodes/$1/proxy/metrics
+        source_labels:
+        - __meta_kubernetes_node_name
+        target_label: __metrics_path__
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        insecure_skip_verify: true
+    - bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      job_name: kubernetes-nodes-cadvisor
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - replacement: kubernetes.default.svc:443
+        target_label: __address__
+      - regex: (.+)
+        replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+        source_labels:
+        - __meta_kubernetes_node_name
+        target_label: __metrics_path__
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        insecure_skip_verify: true
+    - job_name: kubernetes-service-endpoints
+      kubernetes_sd_configs:
+      - role: endpoints
+      relabel_configs:
+      - action: keep
+        regex: true
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_scrape
+      - action: replace
+        regex: (https?)
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_scheme
+        target_label: __scheme__
+      - action: replace
+        regex: (.+)
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_path
+        target_label: __metrics_path__
+      - action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        source_labels:
+        - __address__
+        - __meta_kubernetes_service_annotation_prometheus_io_port
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: kubernetes_namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_service_name
+        target_label: kubernetes_name
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_node_name
+        target_label: kubernetes_node
+    - job_name: kubernetes-service-endpoints-slow
+      kubernetes_sd_configs:
+      - role: endpoints
+      relabel_configs:
+      - action: keep
+        regex: true
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_scrape_slow
+      - action: replace
+        regex: (https?)
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_scheme
+        target_label: __scheme__
+      - action: replace
+        regex: (.+)
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_path
+        target_label: __metrics_path__
+      - action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        source_labels:
+        - __address__
+        - __meta_kubernetes_service_annotation_prometheus_io_port
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: kubernetes_namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_service_name
+        target_label: kubernetes_name
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_node_name
+        target_label: kubernetes_node
+      scrape_interval: 5m
+      scrape_timeout: 30s
+    - honor_labels: true
+      job_name: prometheus-pushgateway
+      kubernetes_sd_configs:
+      - role: service
+      relabel_configs:
+      - action: keep
+        regex: pushgateway
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_probe
+    - job_name: kubernetes-services
+      kubernetes_sd_configs:
+      - role: service
+      metrics_path: /probe
+      params:
+        module:
+        - http_2xx
+      relabel_configs:
+      - action: keep
+        regex: true
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_probe
+      - source_labels:
+        - __address__
+        target_label: __param_target
+      - replacement: blackbox
+        target_label: __address__
+      - source_labels:
+        - __param_target
+        target_label: instance
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels:
+        - __meta_kubernetes_namespace
+        target_label: kubernetes_namespace
+      - source_labels:
+        - __meta_kubernetes_service_name
+        target_label: kubernetes_name
+    - job_name: kubernetes-pods
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - action: keep
+        regex: true
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_scrape
+      - action: replace
+        regex: (.+)
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_path
+        target_label: __metrics_path__
+      - action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        source_labels:
+        - __address__
+        - __meta_kubernetes_pod_annotation_prometheus_io_port
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: kubernetes_namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_name
+        target_label: kubernetes_pod_name
+      - action: drop
+        regex: Pending|Succeeded|Failed
+        source_labels:
+        - __meta_kubernetes_pod_phase
+    - job_name: kubernetes-pods-slow
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - action: keep
+        regex: true
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_scrape_slow
+      - action: replace
+        regex: (.+)
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_path
+        target_label: __metrics_path__
+      - action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        source_labels:
+        - __address__
+        - __meta_kubernetes_pod_annotation_prometheus_io_port
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: kubernetes_namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_name
+        target_label: kubernetes_pod_name
+      - action: drop
+        regex: Pending|Succeeded|Failed
+        source_labels:
+        - __meta_kubernetes_pod_phase
+      scrape_interval: 5m
+      scrape_timeout: 30s
     alerting:
       alertmanagers:
       - kubernetes_sd_configs:
@@ -78,7 +307,7 @@ data:
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
         relabel_configs:
         - source_labels: [__meta_kubernetes_namespace]
-          regex: srini
+          regex: oes
           action: keep
         - source_labels: [__meta_kubernetes_pod_label_app]
           regex: prometheus
@@ -93,16 +322,27 @@ data:
           regex:
           action: drop
   recording_rules.yml: |
-    {}
+    groups:
+      - name: yeshu
+        rules:
+        - record: clouddriver:srini_latency
+          expr: sum(rate(clouddriver:controller:invocations__count_total{service="spin-clouddriver",statusCode="200"}[2m])) by (instance, method,namespace)/ sum(rate(clouddriver:controller:invocations__total{service="spin-clouddriver",statusCode="200"}[2m])) by (instance, method,namespace)
   rules: |
     {}
 kind: ConfigMap
 metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"alerting_rules.yml":"groups:\n- name: pod_cpu_usage_is_high\n  rules:\n    - alert: CPUISHIGH\n      expr: sum(rate(container_cpu_usage_seconds_total{container_name!=\"POD\",pod_name!=\"\"}[5m])) by (pod_name)  \u003e 0.1\n      for: 1m\n      labels:\n        severity: critical\n      annotations:\n        description: 'POD {{ $labels.pod }} cpu is high'\n        summary: 'pod cpu is high'\n\n- name: node_cpu_greater_than_80\n  rules:\n    - alert: NODECPUISHIGH\n      expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100) \u003e 80 \n      for: 1m\n      labels:\n        severity: critical\n      annotations:\n        description: 'node {{ $labels.instance }} cpu is high'\n        summary: 'node cpu is greater than 80 precent'\n- name: node_memory_left_lessser_than_10 \n  rules:\n    - alert: NODEMEMORY\n      expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100 \u003c 10 \n      for: 1m\n      labels:\n        severity: critical\n      annotations:\n        description: 'node {{ $labels.node }} memory left is low'\n        summary: 'node memory left is lesser than 10 precent'\n- name: node_diskspace_low\n  rules:\n    - alert: NODEDISPACE\n      expr: node_filesystem_files_free{mountpoint =\"/\"} / node_filesystem_files{mountpoint =\"/\"} * 100 \u003c 10\n      for: 5m\n      labels:\n        severity: warning\n      annotations:\n        description: 'Disk is almost running out of available inodes (\u003c 10% left)\\n  VALUE = {{ $value }}\\n  LABELS: {{ $labels }}'\n        summary: 'Host out of inodes (instance {{ $labels.instance }})'\n- name: spinnaker-service-is-down\n  rules:\n  - alert: clouddriver-is-down\n    annotations:\n      description: Service {{$labels.service}} did not respond\n        is not responding\n      summary: Clouddriver Spinnaker service is down\n    expr: absent(up{service=\"spin-clouddriver\"}) == 1\n    labels:\n      severity: critical\n  #- alert: clouddriver-rw-is-down\n  #  annotations:\n  #    description: Service {{$labels.service}} in namespace {{$labels.namespace}}\n  #      is not responding\n  #    summary: Clouddriver-rw Spinnaker service is down\n  #  expr: absent(up{service=\"spin-clouddriver-rw\"}) == 1\n  #  labels:\n  #    severity: critical\n  #- alert: clouddriver-ro-is-down\n  #  annotations:\n  #    description: Service {{$labels.service}} in namespace {{$labels.namespace}}\n  #      is not responding\n  #    summary: Clouddriver-ro Spinnaker service is down\n  #  expr: absent(up{service=\"spin-clouddriver-ro\"}) == 1\n  #  labels:\n  #    severity: critical\n  #- alert: clouddriver-caching-is-down\n  #  annotations:\n  #    description: Service {{$labels.service}} in namespace {{$labels.namespace}}\n  #      is not responding\n  #    summary: Clouddriver-caching Spinnaker service is down\n  #  expr: absent(up{service=\"spin-clouddriver-caching\"}) == 1\n  #  labels:\n  #    severity: critical\n  - alert: gate-is-down\n    annotations:\n      description: Service {{$labels.service}} in namespace {{$labels.namespace}}\n        is not responding\n      summary: Gate Spinnaker services is down\n    expr: absent(up{service=\"spin-gate\"}) == 1\n    labels:\n      severity: critical\n  - alert: orca-is-down\n    annotations:\n      description: Service {{$labels.service}} in namespace {{$labels.namespace}}\n        is not responding\n      summary: Orca Spinnaker service is down\n    expr: absent(up{job=\"opsmx_spinnaker_metrics\", service=\"spin-orca\"}) == 1\n    labels:\n      severity: critical\n  - alert: igor-is-down\n    annotations:\n      description: Service {{$labels.service}} in namespace {{$labels.namespace}}\n        is not responding\n      summary: Igor Spinnaker service is down\n    expr: absent(up{service=\"spin-igor\"}) == 1\n    labels:\n      severity: critical\n  - alert: echo-is-down\n    annotations:\n      description: Service {{$labels.service}} in namespace {{$labels.namespace}}\n        is not responding\n      summary: Echo Spinnaker service is down\n    expr: absent(up{service=\"spin-echo\" }) == 1\n    labels:\n      severity: critical\n  #- alert: echo-scheduler-is-down\n  #  annotations:\n  #    description: Service {{$labels.service}} in namespace {{$labels.namespace}}\n  #      is not responding\n  #    summary: Echo-Scheduler Spinnaker service is down\n  #  expr: absent(up{service=\"spin-echo-scheduler\" }) == 1\n  #  labels:\n  #    severity: critical\n  #- alert: echo-worker-is-down\n  #  annotations:\n  #    description: Service {{$labels.service}} in namespace {{$labels.namespace}}\n  #      is not responding\n  #    summary: Echo-worker Spinnaker service is down\n  #  expr: absent(up{service=\"spin-echo-worker\" }) == 1\n  #  labels:\n  #    severity: critical\n  - alert: front50-is-down\n    annotations:\n      description: Service {{$labels.service}} in namespace {{$labels.namespace}}\n        is not responding\n      summary: Front50 Spinnaker service is down\n    expr: absent(up{service=\"spin-front50\" }) == 1\n    labels:\n      severity: critical\n- name: latency-too-high\n  rules:\n  - alert: clouddriver-latency-too-high\n    annotations:\n      description: \"Service {{$labels.instance}} is slow ({{$value}} per minute)\"\n      summary: \"latency of clouddriver is too high\"\n    expr: sum(rate(clouddriver:controller:invocations__count_total{service=\"spin-clouddriver\",statusCode=\"200\"}[2m]))\n      by (instance, method)/ sum(rate(clouddriver:controller:invocations__total{service=\"spin-clouddriver\",statusCode=\"200\"}[2m]))\n      by (instance, method) \u003e 70000\n    for: 5m\n    labels:\n      severity: warning\n  #- alert: clouddriver-ro-latency-too-high\n  #  annotations:\n  #    description: Service {{$labels.instance}} is slow ({{$value}} per minute)\n  #    summary: latency of clouddriver-ro is too high\n  #  expr: sum(rate(clouddriver_ro:controller:invocations__count_total{service=\"spin-clouddriver-ro\",statusCode=\"200\"}[2m]))\n  #    by (instance, method)/ sum(rate(clouddriver_ro:controller:invocations__total{service=\"spin-clouddriver-ro\",statusCode=\"200\"}[2m]))\n  #    by (instance, method) \u003e 200\n  #  for: 5m\n  #  labels:\n  #    severity: warning\n  #- alert: clouddriver-rw-latency-too-high\n  #  annotations:\n  #    description: Service {{$labels.instance}} is slow ({{$value}} per minute)\n  #    summary: latency of clouddriver-rw is too high\n  #  expr: sum(rate(clouddriver_rw:controller:invocations__count_total{service=\"spin-clouddriver-rw\",statusCode=\"200\"}[2m]))\n  #    by (instance, method)/ sum(rate(clouddriver_rw:controller:invocations__total{service=\"spin-clouddriver-rw\",statusCode=\"200\"}[2m]))\n  #    by (instance, method) \u003e 200\n  #  for: 5m\n  #  labels:\n  #    severity: warning\n  #- alert: clouddriver-caching-latency-too-high\n  #  annotations:\n  #    description: Service {{$labels.instance}} is slow ({{$value}} per minute)\n  #    summary: latency clouddriver-caching is too high\n  #  expr: sum(rate(clouddriver_caching:controller:invocations__count_total{service=\"spin-clouddriver-caching\",statusCode=\"200\"}[2m]))\n  #    by (instance, method)/ sum(rate(clouddriver_caching:controller:invocations__total{service=\"spin-clouddriver-caching\",statusCode=\"200\"}[2m]))\n  #    by (instance, method) \u003e 300\n  #  for: 5m\n  #  labels:\n  #    severity: warning\n  - alert: gate-latency-too-high\n    annotations:\n      description: Service {{$labels.instance}} is slow ({{$value}} per minute)\n      summary: latency of gate is too high\n    expr: sum(rate(gate:controller:invocations__count_total{service=\"spin-gate\",statusCode=\"200\"}[2m]))\n      by (instance, method)/ sum(rate(gate:controller:invocations__total{service=\"spin-gate\",statusCode=\"200\"}[2m]))\n      by (instance, method) \u003e 5000\n    for: 5m\n    labels:\n      severity: warning\n  - alert: orca-latency-too-high\n    annotations:\n      description: Service {{$labels.instance}} is slow ({{$value}} per minute)\n      summary: latency of orca is too high\n    expr: sum(rate(orca:controller:invocations__count_total{service=\"spin-orca\",statusCode=\"200\"}[2m]))\n      by (instance, method)/ sum(rate(orca:controller:invocations__total{service=\"spin-orca\",statusCode=\"200\"}[2m]))\n      by (instance, method) \u003e 2000\n    for: 5m\n    labels:\n      severity: warning\n  - alert: igor-latency-too-high\n    annotations:\n      description: Service {{$labels.instance}} is slow ({{$value}} per minute)\n      summary: latency of igor is too high\n    expr: sum(rate(igor:controller:invocations__count_total{service=\"spin-igor\",statusCode=\"200\"}[2m]))\n      by (instance, method)/ sum(rate(igor:controller:invocations__total{service=\"spin-igor\",statusCode=\"200\"}[2m]))\n      by (instance, method) \u003e 10000\n    for: 5m\n    labels:\n      severity: warning\n  - alert: echo-latency-too-high\n    annotations:\n      description: Service {{$labels.instance}} is slow ({{$value}} per minute)\n      summary: latency of echo is too high\n    expr: sum(rate(echo:controller:invocations__count_total{service=\"spin-echo\",statusCode=\"200\"}[2m]))\n      by (instance, method)/ sum(rate(echo:controller:invocations__total{service=\"spin-echo\",statusCode=\"200\"}[2m]))\n      by (instance, method) \u003e 6000\n    for: 5m\n    labels:\n      severity: warning\n  #- alert: echo_scheduler-latency-too-high\n  #  annotations:\n  #    description: Service {{$labels.instance}} is slow ({{$value}} per minute)\n  #    summary: latency of echo-scheduler is too high\n  #  expr: sum(rate(echo_scheduler:controller:invocations__count_total{service=\"spin-echo-scheduler\",statusCode=\"200\"}[2m]))\n  #    by (instance, method)/ sum(rate(echo_scheduler:controller:invocations__total{service=\"spin-echo-scheduler\",statusCode=\"200\"}[2m]))\n  #    by (instance, method) \u003e 300\n  #  for: 5m\n  #  labels:\n  #    severity: warning\n  #- alert: echo_worker-latency-too-high\n  #  annotations:\n  #    description: Service {{$labels.instance}} is slow ({{$value}} per minute)\n  #    summary: latency of echo-worker is too high\n  #  expr: sum(rate(echo_worker:controller:invocations__count_total{service=\"spin-echo-worker\",statusCode=\"200\"}[2m]))\n  #    by (instance, method)/ sum(rate(echo_worker:controller:invocations__total{service=\"spin-echo-worker\",statusCode=\"200\"}[2m]))\n  #    by (instance, method) \u003e 2000\n  #  for: 5m\n  #  labels:\n  #    severity: warning\n  - alert: front50-latency-too-high\n    annotations:\n      description: \"Service {{$labels.instance}} is slow ({{$value}} per minute)\"\n      summary: 'latency of front50 is too high'\n    expr: sum(rate(front50:controller:invocations__count_total{service=\"spin-front50\",statusCode=\"200\"}[2m]))\n      by (instance, method)/ sum(rate(front50:controller:invocations__total{service=\"spin-front50\",statusCode=\"200\"}[2m]))\n      by (instance, method) \u003e 1200\n    for: 5m\n    labels:\n      severity: warning\n- name: jvm-too-high\n  rules:\n  - alert: clouddriver-pod-may-be-evicted-soon\n    annotations:\n      description: \"Service {{$labels.instance}} JVM Memory is above 90%\"\n      summary: Clouddriver JVM memory too high\n    expr: (sum(clouddriver:jvm:memory:used__value) by (instance, area) / sum(clouddriver:jvm:memory:max__value) by (instance, area)) \u003e .9\n    labels:\n      severity: warning\n  #- alert: clouddriver-rw-pod-may-be-evicted-soon\n  #  annotations:\n  #    description: Service {{$labels.instance}} JVM Memory too high\n  #      may be evicted soon\n  #    summary: Clouddriver-rw JVM memory too high\n  #  expr: (sum(clouddriver_rw:jvm:memory:used__value) by (instance, area) / sum(clouddriver_rw:jvm:memory:max__value)\n  #    by (instance, area)) \u003e .9\n  #  labels:\n  #    severity: warning\n  #- alert: clouddriver-ro-pod-may-be-evicted-soon\n  #  annotations:\n  #    description: Service {{$labels.instance}} JVM Memory too high\n  #      may be evicted soon\n  #    summary: Clouddriver-ro JVM memory too high\n  #  expr: (sum(clouddriver_ro:jvm:memory:used__value) by (instance, area) / sum(clouddriver_ro:jvm:memory:max__value)\n  #    by (instance, area)) \u003e .9\n  #  labels:\n  #    severity: warning\n  #- alert: clouddriver-caching-pod-may-be-evicted-soon\n  #  annotations:\n  #    description: Service {{$labels.instance}} JVM Memory too high\n  #      may be evicted soon\n  #    summary: Clouddriver-caching JVM memory too high\n  #  expr: (sum(clouddriver_caching:jvm:memory:used__value) by (instance, area) / sum(clouddriver_caching:jvm:memory:max__value)\n  #    by (instance, area)) \u003e .9\n  #  labels:\n  #    severity: warning\n  - alert: gate-pod-may-be-evicted-soon\n    annotations:\n      description: Service {{$labels.instance}} JVM Memory too high\n        may be evicted soon\n      summary: gate JVM memory too high\n    expr: (sum(gate:jvm:memory:used__value) by (instance, area) / sum(gate:jvm:memory:max__value)\n      by (instance, area)) \u003e .9\n    labels:\n      severity: warning\n  - alert: orca-pod-may-be-evicted-soon\n    annotations:\n      description: Service {{$labels.instance}} may be evicted soon\n      summary: orca JVM memory too high\n    expr: (sum(orca:jvm:gc:liveDataSize__value) by (instance, area) / sum(orca:jvm:gc:maxDataSize__value)\n      by (instance, area)) \u003e .9\n    labels:\n      severity: warning\n  - alert: igor-pod-may-be-evicted-soon\n    annotations:\n      description: Service {{$labels.instance}} in namespace {{$labels.namespace}}\n        may be evicted soon\n      summary: igor JVM memory too high\n    expr: (sum(igor:jvm:memory:used__value) by (instance, area) / sum(igor:jvm:memory:max__value)\n      by (instance, area)) \u003e .9\n    labels:\n      severity: warning\n  - alert: echo-pod-may-be-evicted-soon\n    annotations:\n      description: Service {{$labels.instance}} may be evicted soon\n      summary: echo JVM memory too high\n    expr: (sum(echo:jvm:memory:used__value) by (instance, area) / sum(echo:jvm:memory:max__value) by (instance, area)) \u003e .9\n    labels:\n      severity: warning\n  #- alert: echo-scheduler-pod-may-be-evicted-soon\n  #  annotations:\n  #    description: Service {{$labels.instance}} may be evicted soon\n  #      may be evicted soon\n  #    summary: echo-scheduler JVM memory too high\n  #  expr: (sum(echo_scheduler:jvm:memory:used__value) by (instance, area) / sum(echo_scheduler:jvm:memory:max__value)\n  #    by (instance, area)) \u003e .9\n  #  labels:\n  #    severity: warning\n  #- alert: echo-worker-pod-may-be-evicted-soon\n  #  annotations:\n  #    description: Service {{$labels.instance}} may be evicted soon\n  #      may be evicted soon\n  #    summary: echo-worker JVM memory too high\n  #  expr: (sum(echo_worker:jvm:memory:used__value) by (instance, area) / sum(echo_worker:jvm:memory:max__value)\n  #    by (instance, area)) \u003e .9\n  #  labels:\n  #    severity: warning\n  - alert: front50-pod-may-be-evicted-soon\n    annotations:\n      description: Service {{$labels.instance}} may be evicted soon\n      summary: Front50 JVM memory too high\n    expr: (sum(front50:jvm:memory:used__value) by (instance, area) / sum(front50:jvm:memory:max__value)\n      by (instance, area)) \u003e .9\n    labels:\n      severity: warning\n# Clouddriver-Service specific alerts\n- name: Clouddriver-execution-time\n  rules:\n  - alert: Clouddriver-execution-time-too-high\n    annotations:\n      description: \"Service {{$labels.instance}} execution time too high\"\n      summary: \"Clouddriver:executiontime is high\"\n    expr: sum(rate(clouddriver:executionTime__total[2m])) by (instance, agent) / sum(rate(clouddriver:executionTime__count_total[2m])) by (instance, agent) \u003e 100\n    for: 2m\n    labels:\n      severity: warning\n# Front50-Service specific alerts\n- name: Front50-cache\n  rules:\n  - alert: \"front50:storageServiceSupport:cacheAge__value\"\n    annotations:\n      description: value = {{$value}}\n      summary: \"front50 cacheAge too high\"\n    expr: front50:storageServiceSupport:cacheAge__value \u003e 300000\n    for: 2m\n    labels:\n      severity: warning\n# fiat-Service specific alerts\n- name: Fiat-UserRoles-sync\n  rules:\n  - alert: fiat-userRoles-sync-time-too-high\n    annotations:\n      description: \"Fiat userRoles sync time is high\"\n      summary: \"fiat-userRoles-sync-time-too-high\"\n    expr: fiat:fiat:userRoles:syncTime__count_total/fiat:fiat:userRoles:syncTime__total \u003e 8\n    for: 2m\n    labels:\n      severity: warning\n# gate-Service specific alerts\n- name: Gate-issues\n  rules:\n  - alert: \"Gate:hystrix:latencyTotal__percentile_50__value\"\n    annotations:\n      description: \"Median gate response too slow\"\n      summary: \"50 percentile value is {{ $value }}\"\n    expr: gate:hystrix:latencyTotal__percentile_50__value \u003e 1600\n    for: 5m\n    labels:\n      severity: critical\n  - alert: \"gate:hystrix:latencyTotal__percentile_90__value\"\n    annotations:\n      description: \"gate response slow\"\n      summary: \"90 percentile value is {{ $value }}\"\n    expr: gate:hystrix:latencyTotal__percentile_90__value \u003e 2000\n    for: 5m\n    labels:\n      severity: warning\n  - alert: \"gate:hystrix:errorPercentage__value\"\n    annotations:\n      description: \"gate experiencing errors\"\n      summary: \"Error percentage is {{ $value }}\"\n    expr: gate:hystrix:errorPercentage__value \u003e 0.01\n    for: 2m\n    labels:\n      severity: warning\n# Orca-Service specific alerts\n- name: orca-queue-issue\n  rules:\n  - alert: orca-queue-depth-high\n    annotations:\n      description: Service {{$labels.instance}} may be evicted soon\n        may be evicted soon\n      summary: Orca queue depth is high\n    expr: (sum(orca:queue:ready:depth) by (instance) ) \u003e 10\n    labels:\n      severity: warning\n  - alert: orca-queue-lag-high\n    annotations:\n      description: Lag = {{$value}}\n      summary: Orca queue lag is high\n    expr: sum(rate (orca:controller:invocations__totalTime_total[2m])) by (instance)  /\n      sum(rate(orca:controller:invocations__count_total[2m])) by (instance) \u003e 0.5\n    labels:\n      severity: warning\n- name: igor-needs-attention\n  rules:\n  - alert: igor-needs-attention\n    annotations:\n      description: Igor in namespace {{$labels.namespace}} needs human help\n      summary: Igor needs attention\n    expr: igor:pollingMonitor:itemsOverThreshold \u003e 0\n    labels:\n      severity: crtical\n","alerts":"{}\n","prometheus.yml":"global:\n  evaluation_interval: 1m\n  scrape_interval: 1m\n  scrape_timeout: 10s\nrule_files:\n- /etc/config/recording_rules.yml\n- /etc/config/alerting_rules.yml\n- /etc/config/rules\n- /etc/config/alerts\nscrape_configs:\n- honor_labels: true\n  job_name: opsmx_spinnaker_metrics\n  kubernetes_sd_configs:\n  - role: endpoints\n  metrics_path: /prometheus_metrics\n  relabel_configs:\n  - action: keep\n    regex: spin\n    source_labels:\n    - __meta_kubernetes_service_label_app\n  - action: keep\n    regex: \"8008\"\n    source_labels:\n    - __meta_kubernetes_pod_container_port_number\n  - regex: Node;(.*)\n    replacement: ${1}\n    separator: ;\n    source_labels:\n    - __meta_kubernetes_endpoint_address_target_kind\n    - __meta_kubernetes_endpoint_address_target_name\n    target_label: node\n  - regex: Pod;(.*)\n    replacement: ${1}\n    separator: ;\n    source_labels:\n    - __meta_kubernetes_endpoint_address_target_kind\n    - __meta_kubernetes_endpoint_address_target_name\n    target_label: pod\n  - source_labels:\n    - __meta_kubernetes_namespace\n    target_label: namespace\n  - source_labels:\n    - __meta_kubernetes_service_name\n    target_label: service\n  - source_labels:\n    - __meta_kubernetes_pod_name\n    target_label: pod\n  - replacement: \"8008\"\n    target_label: endpoint\n- job_name: prometheus\n  static_configs:\n  - targets:\n    - localhost:9090\n- bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token\n  job_name: kubernetes-apiservers\n  kubernetes_sd_configs:\n  - role: endpoints\n  relabel_configs:\n  - action: keep\n    regex: default;kubernetes;https\n    source_labels:\n    - __meta_kubernetes_namespace\n    - __meta_kubernetes_service_name\n    - __meta_kubernetes_endpoint_port_name\n  scheme: https\n  tls_config:\n    ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt\n    insecure_skip_verify: true\n- bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token\n  job_name: kubernetes-nodes\n  kubernetes_sd_configs:\n  - role: node\n  relabel_configs:\n  - action: labelmap\n    regex: __meta_kubernetes_node_label_(.+)\n  - replacement: kubernetes.default.svc:443\n    target_label: __address__\n  - regex: (.+)\n    replacement: /api/v1/nodes/$1/proxy/metrics\n    source_labels:\n    - __meta_kubernetes_node_name\n    target_label: __metrics_path__\n  scheme: https\n  tls_config:\n    ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt\n    insecure_skip_verify: true\n- bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token\n  job_name: kubernetes-nodes-cadvisor\n  kubernetes_sd_configs:\n  - role: node\n  relabel_configs:\n  - action: labelmap\n    regex: __meta_kubernetes_node_label_(.+)\n  - replacement: kubernetes.default.svc:443\n    target_label: __address__\n  - regex: (.+)\n    replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor\n    source_labels:\n    - __meta_kubernetes_node_name\n    target_label: __metrics_path__\n  scheme: https\n  tls_config:\n    ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt\n    insecure_skip_verify: true\n- job_name: kubernetes-service-endpoints\n  kubernetes_sd_configs:\n  - role: endpoints\n  relabel_configs:\n  - action: keep\n    regex: true\n    source_labels:\n    - __meta_kubernetes_service_annotation_prometheus_io_scrape\n  - action: replace\n    regex: (https?)\n    source_labels:\n    - __meta_kubernetes_service_annotation_prometheus_io_scheme\n    target_label: __scheme__\n  - action: replace\n    regex: (.+)\n    source_labels:\n    - __meta_kubernetes_service_annotation_prometheus_io_path\n    target_label: __metrics_path__\n  - action: replace\n    regex: ([^:]+)(?::\\d+)?;(\\d+)\n    replacement: $1:$2\n    source_labels:\n    - __address__\n    - __meta_kubernetes_service_annotation_prometheus_io_port\n    target_label: __address__\n  - action: labelmap\n    regex: __meta_kubernetes_service_label_(.+)\n  - action: replace\n    source_labels:\n    - __meta_kubernetes_namespace\n    target_label: kubernetes_namespace\n  - action: replace\n    source_labels:\n    - __meta_kubernetes_service_name\n    target_label: kubernetes_name\n  - action: replace\n    source_labels:\n    - __meta_kubernetes_pod_node_name\n    target_label: kubernetes_node\n- job_name: kubernetes-service-endpoints-slow\n  kubernetes_sd_configs:\n  - role: endpoints\n  relabel_configs:\n  - action: keep\n    regex: true\n    source_labels:\n    - __meta_kubernetes_service_annotation_prometheus_io_scrape_slow\n  - action: replace\n    regex: (https?)\n    source_labels:\n    - __meta_kubernetes_service_annotation_prometheus_io_scheme\n    target_label: __scheme__\n  - action: replace\n    regex: (.+)\n    source_labels:\n    - __meta_kubernetes_service_annotation_prometheus_io_path\n    target_label: __metrics_path__\n  - action: replace\n    regex: ([^:]+)(?::\\d+)?;(\\d+)\n    replacement: $1:$2\n    source_labels:\n    - __address__\n    - __meta_kubernetes_service_annotation_prometheus_io_port\n    target_label: __address__\n  - action: labelmap\n    regex: __meta_kubernetes_service_label_(.+)\n  - action: replace\n    source_labels:\n    - __meta_kubernetes_namespace\n    target_label: kubernetes_namespace\n  - action: replace\n    source_labels:\n    - __meta_kubernetes_service_name\n    target_label: kubernetes_name\n  - action: replace\n    source_labels:\n    - __meta_kubernetes_pod_node_name\n    target_label: kubernetes_node\n  scrape_interval: 5m\n  scrape_timeout: 30s\n- honor_labels: true\n  job_name: prometheus-pushgateway\n  kubernetes_sd_configs:\n  - role: service\n  relabel_configs:\n  - action: keep\n    regex: pushgateway\n    source_labels:\n    - __meta_kubernetes_service_annotation_prometheus_io_probe\n- job_name: kubernetes-services\n  kubernetes_sd_configs:\n  - role: service\n  metrics_path: /probe\n  params:\n    module:\n    - http_2xx\n  relabel_configs:\n  - action: keep\n    regex: true\n    source_labels:\n    - __meta_kubernetes_service_annotation_prometheus_io_probe\n  - source_labels:\n    - __address__\n    target_label: __param_target\n  - replacement: blackbox\n    target_label: __address__\n  - source_labels:\n    - __param_target\n    target_label: instance\n  - action: labelmap\n    regex: __meta_kubernetes_service_label_(.+)\n  - source_labels:\n    - __meta_kubernetes_namespace\n    target_label: kubernetes_namespace\n  - source_labels:\n    - __meta_kubernetes_service_name\n    target_label: kubernetes_name\n- job_name: kubernetes-pods\n  kubernetes_sd_configs:\n  - role: pod\n  relabel_configs:\n  - action: keep\n    regex: true\n    source_labels:\n    - __meta_kubernetes_pod_annotation_prometheus_io_scrape\n  - action: replace\n    regex: (.+)\n    source_labels:\n    - __meta_kubernetes_pod_annotation_prometheus_io_path\n    target_label: __metrics_path__\n  - action: replace\n    regex: ([^:]+)(?::\\d+)?;(\\d+)\n    replacement: $1:$2\n    source_labels:\n    - __address__\n    - __meta_kubernetes_pod_annotation_prometheus_io_port\n    target_label: __address__\n  - action: labelmap\n    regex: __meta_kubernetes_pod_label_(.+)\n  - action: replace\n    source_labels:\n    - __meta_kubernetes_namespace\n    target_label: kubernetes_namespace\n  - action: replace\n    source_labels:\n    - __meta_kubernetes_pod_name\n    target_label: kubernetes_pod_name\n  - action: drop\n    regex: Pending|Succeeded|Failed\n    source_labels:\n    - __meta_kubernetes_pod_phase\n- job_name: kubernetes-pods-slow\n  kubernetes_sd_configs:\n  - role: pod\n  relabel_configs:\n  - action: keep\n    regex: true\n    source_labels:\n    - __meta_kubernetes_pod_annotation_prometheus_io_scrape_slow\n  - action: replace\n    regex: (.+)\n    source_labels:\n    - __meta_kubernetes_pod_annotation_prometheus_io_path\n    target_label: __metrics_path__\n  - action: replace\n    regex: ([^:]+)(?::\\d+)?;(\\d+)\n    replacement: $1:$2\n    source_labels:\n    - __address__\n    - __meta_kubernetes_pod_annotation_prometheus_io_port\n    target_label: __address__\n  - action: labelmap\n    regex: __meta_kubernetes_pod_label_(.+)\n  - action: replace\n    source_labels:\n    - __meta_kubernetes_namespace\n    target_label: kubernetes_namespace\n  - action: replace\n    source_labels:\n    - __meta_kubernetes_pod_name\n    target_label: kubernetes_pod_name\n  - action: drop\n    regex: Pending|Succeeded|Failed\n    source_labels:\n    - __meta_kubernetes_pod_phase\n  scrape_interval: 5m\n  scrape_timeout: 30s\nalerting:\n  alertmanagers:\n  - kubernetes_sd_configs:\n      - role: pod\n    tls_config:\n      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt\n    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token\n    relabel_configs:\n    - source_labels: [__meta_kubernetes_namespace]\n      regex: oes\n      action: keep\n    - source_labels: [__meta_kubernetes_pod_label_app]\n      regex: prometheus\n      action: keep\n    - source_labels: [__meta_kubernetes_pod_label_component]\n      regex: alertmanager\n      action: keep\n    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_probe]\n      regex: .*\n      action: keep\n    - source_labels: [__meta_kubernetes_pod_container_port_number]\n      regex:\n      action: drop\n","recording_rules.yml":"groups:\n  - name: yeshu\n    rules:\n    - record: clouddriver:srini_latency\n      expr: sum(rate(clouddriver:controller:invocations__count_total{service=\"spin-clouddriver\",statusCode=\"200\"}[2m])) by (instance, method,namespace)/ sum(rate(clouddriver:controller:invocations__total{service=\"spin-clouddriver\",statusCode=\"200\"}[2m])) by (instance, method,namespace)\n","rules":"{}\n"},"kind":"ConfigMap","metadata":{"annotations":{},"creationTimestamp":"2020-10-30T08:43:09Z","labels":{"app":"prometheus","chart":"prometheus-11.16.2","component":"server","heritage":"Helm","release":"prom"},"name":"prom-prometheus-server","namespace":"oes","resourceVersion":"34133516","selfLink":"/api/v1/namespaces/oes/configmaps/prom-prometheus-server","uid":"8076dd3b-def0-41d3-9cb2-ef7bb27a0afe"}}
+  creationTimestamp: "2020-12-11T08:05:24Z"
   labels:
     app: prometheus
-    chart: prometheus-10.4.0
+    chart: prometheus-11.16.2
     component: server
     heritage: Helm
-    release: prometheus-1584018984
-  name: prometheus-1584018984-server
-  namespace: srini
+    release: prom
+  name: prom-prometheus-server
+  namespace: oes
+  resourceVersion: "38207185"
+  selfLink: /api/v1/namespaces/oes/configmaps/prom-prometheus-server
+  uid: f20402c4-95c6-493b-afca-503f0049a7c3
