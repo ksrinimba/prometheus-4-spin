@@ -1,12 +1,11 @@
 apiVersion: v1
 data:
-  alertmanager.yml: "global: \n  smtp_smarthost: 'smtp.vodafone.de:587'\n  smtp_from:
-    'ksrini_mba@vodafone.de'\n  smtp_auth_username: 'ksrini_mba@vodafone.de'\n  smtp_auth_password:
-    'Kambh12#'\nreceivers:\n- name: opsmx_alert_receivers\n  email_configs:\n  - to:
+  alertmanager.yml: "global: \n  smtp_smarthost: '<YOUR_SMTP_SERVER>'\n  smtp_from:
+    '<YOUR_SMTP_USERNAME>'\n  smtp_auth_username: '<YOUR_SMTP_USERNAME>'\n  smtp_auth_password:
+    '<YOUR_SMTP_PASSWORD>'\nreceivers:\n- name: opsmx_alert_receivers\n  email_configs:\n  - to:
     no-reply-demo@opsmx.io\n    send_resolved: false\n    text: \" \\nsummary: {{
     .CommonAnnotations.summary }}\\ndescription: {{ .CommonAnnotations.description
-    }}\" \n  slack_configs:\n  - api_url: https://hooks.slack.com/services/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\n
-    \   icon_url: https://avatars3.githubusercontent.com/u/3380462\n    send_resolved:
+    }}\" \n  slack_configs:\n  - api_url: <SLACK_WEBHOOK_URL>\n    send_resolved:
     true\n    #title: '{{.CommonAnnotations.summary}}'\n    #channel: 'prom-alert-test'\n
     \   #text: '{{ .CommonAnnotations.description }}'\n    text: \"{{ range .Alerts
     }}<!channel> {{ .Annotations.summary }}\\n{{ .Annotations.description }}\\n{{
