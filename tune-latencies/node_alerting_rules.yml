@@ -1,3 +1,4 @@
+# https://github.com/camilb/prometheus-kubernetes/blob/master/manifests/prometheus/prometheus-k8s-rules.yaml
 groups:
 - name: pod_cpu_usage_is_high
   rules:
@@ -40,6 +41,16 @@ groups:
       annotations:
         description: node {{ $labels.node }} disk space is only {{ printf "%0.2f" $value }}% free.
         summary: 'node disk space remaining is less than 10 percent'
+    - alert: NodeDiskRunningFull
+      annotations:
+        description: Device {{ $labels.device }} of node-exporter {{ $labels.namespace
+          }}/{{ $labels.pod }} will be full within the next 24 hours.
+        summary: 'node disk space could be full in next 24 hours'
+      expr: |
+        (node:node_filesystem_usage: > 0.85) and (predict_linear(node:node_filesystem_avail:[6h], 3600 * 24) < 0)
+      for: 30m
+      labels:
+        severity: warning
 - name: persistent_volume_space_low
   rules:
     - alert: PERSISTENTVOLUME
@@ -50,13 +61,30 @@ groups:
       annotations:
         description: The PersistentVolume claimed by {{ $labels.persistentvolumeclaim }} in Namespace {{ $labels.namespace }} is only {{ printf "%0.2f" $value }}% free.
         summary: 'persistent volume disk space is less than 10 percent'
-- name: pod killed or evicted
-  rules:
-    - alert: ContainerKilled
-      expr: time() - container_last_seen > 60
+    - alert: KubePersistentVolumeFullInFourDays
+      annotations:
+        description: Based on recent sampling, the PersistentVolume claimed by {{ $labels.persistentvolumeclaim
+          }} in Namespace {{ $labels.namespace }} is expected to fill up within four
+          days. Currently {{ printf "%0.2f" $value }}% is available.
+        summary: "Based on linear prediction, looks like a PV is going to be full"
+      expr: |
+        100 * (
+          kubelet_volume_stats_available_bytes{job="kubelet"}
+            /
+          kubelet_volume_stats_capacity_bytes{job="kubelet"}
+        ) < 15
+        and
+        predict_linear(kubelet_volume_stats_available_bytes{job="kubelet"}[6h], 4 * 24 * 3600) < 0
       for: 5m
       labels:
         severity: warning
-      annotations:
-        description: "Container killed (instance {{ $labels.instance }})"
-        summary: "Container killed (instance {{ $labels.instance }})"
+#- name: pod killed or evicted
+#  rules:
+#    - alert: ContainerKilled
+#      expr: time() - container_last_seen > 60
+#      for: 5m
+#      labels:
+#        severity: warning
+#      annotations:
+#        description: "Container killed (instance {{ $labels.instance }})"
+#        summary: "Container killed (instance {{ $labels.instance }})"

@@ -6,7 +6,7 @@ data:
       rules:
       - alert: clouddriver-ro-latency-too-high-getAccount
         expr: sum(rate(clouddriver_ro:controller:invocations__total{service="spin-clouddriver-ro",statusCode="200", method = "getAccount"}[5m])) by (instance, method)/ sum(rate(clouddriver_ro:controller:invocations__count_total{service="spin-clouddriver-ro",statusCode="200", method = "getAccount"}[5m])) by (instance, method) > 1
-        for: 5m
+        for: 15m
         labels:
           severity: warning
         annotations:
@@ -14,7 +14,7 @@ data:
           summary: latency of clouddriver-ro is too high
       - alert: clouddriver-ro-latency-too-high-others
         expr: sum(rate(clouddriver_ro:controller:invocations__total{service="spin-clouddriver-ro",statusCode="200", method != "getAccount"}[5m])) by (instance, method)/ sum(rate(clouddriver_ro:controller:invocations__count_total{service="spin-clouddriver-ro",statusCode="200", method != "getAccount"}[5m])) by (instance, method) > 100
-        for: 5m
+        for: 15m
         labels:
           severity: warning
         annotations:
@@ -22,7 +22,7 @@ data:
           summary: latency of clouddriver-ro is too high
       - alert: clouddriver-rw-latency-too-high
         expr: sum(rate(clouddriver_rw:controller:invocations__total{service="spin-clouddriver-rw",statusCode="200"}[5m])) by (instance, method)/ sum(rate(clouddriver_rw:controller:invocations__count_total{service="spin-clouddriver-rw",statusCode="200"}[5m])) by (instance, method) *1000 > 500
-        for: 5m
+        for: 15m
         labels:
           severity: warning
         annotations:
@@ -30,23 +30,23 @@ data:
           summary: latency of clouddriver-rw is too high
       - alert: clouddriver-caching-latency-too-high
         expr: sum(rate(clouddriver_caching:controller:invocations__total{service="spin-clouddriver-caching",statusCode="200", method != "getMetrics"}[5m])) by (instance, method)/ sum(rate(clouddriver_caching:controller:invocations__count_total{service="spin-clouddriver-caching",statusCode="200", method != "getMetrics"}[5m])) by (instance, method) * 1000 > 50
-        for: 5m
+        for: 15m
         labels:
           severity: warning
         annotations:
           description: "Service {{$labels.service}} is slow ({{$value}} per minute)"
           summary: latency clouddriver-caching is too high
       - alert: gate-latency-too-high-savePipeline
-        expr: sum(rate(gate:controller:invocations__total{service="spin-gate",statusCode="200", method="savePipeline"}[5m])) by (instance, method)/ sum(rate(gate:controller:invocations__count_total{service="spin-gate",statusCode="200", method="savePipeline"}[5m])) by (instance, method) * 1000 > 600
-        for: 5m
+        expr: sum(rate(gate:controller:invocations__total{service="spin-gate",statusCode="200", method =~ "savePipeline|getManifest|getConsoleOutput"}[5m])) by (instance, method)/ sum(rate(gate:controller:invocations__count_total{service="spin-gate",statusCode="200", method =~ "savePipeline|getManifest|getConsoleOutput"}[5m])) by (instance, method) * 1000 > 3000
+        for: 15m
         labels:
           severity: warning
         annotations:
           description: "Service {{$labels.service}} is slow ({{$value}} per minute)"
           summary: latency of gate is too high
       - alert: gate-latency-too-high-others
-        expr: sum(rate(gate:controller:invocations__total{service="spin-gate",statusCode="200", method != "savePipeline"}[5m])) by (instance, method)/ sum(rate(gate:controller:invocations__count_total{service="spin-gate",statusCode="200", method != "savePipeline"}[5m])) by (instance, method) * 1000 > 200
-        for: 5m
+        expr: sum by(instance, method) (rate(gate:controller:invocations__total{method !~ "savePipeline|getManifest|getConsoleOutput",service="spin-gate",statusCode="200"}[5m])) / sum by(instance, method) (rate(gate:controller:invocations__count_total{method!="savePipeline|getManifest|getConsoleOutput",service="spin-gate",statusCode="200"}[5m])) * 1000 > 500
+        for: 15m
         labels:
           severity: warning
         annotations:
@@ -54,15 +54,15 @@ data:
           summary: latency of gate is too high
       - alert: orca-latency-too-high
         expr: sum(rate(orca:controller:invocations__total{service="spin-orca",statusCode="200"}[5m])) by (instance, method)/ sum(rate(orca:controller:invocations__count_total{service="spin-orca",statusCode="200"}[5m])) by (instance, method) * 1000 > 50
-        for: 5m
+        for: 15m
         labels:
           severity: warning
         annotations:
           description: "Service {{$labels.service}} is slow ({{$value}} per minute)"
           summary: latency of orca is too high
       - alert: igor-latency-too-high
-        expr: sum(rate(igor:controller:invocations__total{service="spin-igor",statusCode="200"}[5m])) by (instance, method)/ sum(rate(igor:controller:invocations__count_total{service="spin-igor",statusCode="200"}[5m])) by (instance, method) * 1000 > 200
-        for: 5m
+        expr: sum(rate(igor:controller:invocations__total{service="spin-igor",statusCode="200"}[5m])) by (instance, method)/ sum(rate(igor:controller:invocations__count_total{service="spin-igor",statusCode="200"}[5m])) by (instance, method) * 1000 > 500
+        for: 15m
         labels:
           severity: warning
         annotations:
@@ -70,7 +70,7 @@ data:
           summary: latency of igor is too high
       - alert: echo_scheduler-latency-too-high
         expr: sum(rate(echo_scheduler:controller:invocations__total{service="spin-echo-scheduler",statusCode="200"}[5m])) by (instance, method)/ sum(rate(echo_scheduler:controller:invocations__count_total{service="spin-echo-scheduler",statusCode="200"}[5m])) by (instance, method) * 1000 > 5
-        for: 5m
+        for: 15m
         labels:
           severity: warning
         annotations:
@@ -78,7 +78,7 @@ data:
           summary: latency of echo-scheduler is too high
       - alert: echo_worker-latency-too-high
         expr: sum(rate(echo_worker:controller:invocations__total{service="spin-echo-worker",statusCode="200"}[5m])) by (instance, method)/ sum(rate(echo_worker:controller:invocations__count_total{service="spin-echo-worker",statusCode="200"}[5m])) by (instance, method) * 1000  > 5
-        for: 5m
+        for: 15m
         labels:
           severity: warning
         annotations:
@@ -86,13 +86,14 @@ data:
           summary: latency of echo-worker is too high
       - alert: front50-latency-too-high
         expr: sum(rate(front50:controller:invocations__total{service="spin-front50",statusCode="200"}[5m])) by (instance, method)/ sum(rate(front50:controller:invocations__count_total{service="spin-front50",statusCode="200"}[5m])) by (instance, method) * 1000 > 500
-        for: 5m
+        for: 15m
         labels:
           severity: warning
         annotations:
           description: "Service {{$labels.service}} is slow ({{$value}} per minute)"
           summary: latency of front50 is too high
   node_alerting_rules.yml: |
+    # https://github.com/camilb/prometheus-kubernetes/blob/master/manifests/prometheus/prometheus-k8s-rules.yaml
     groups:
     - name: pod_cpu_usage_is_high
       rules:
@@ -135,6 +136,16 @@ data:
           annotations:
             description: node {{ $labels.node }} disk space is only {{ printf "%0.2f" $value }}% free.
             summary: 'node disk space remaining is less than 10 percent'
+        - alert: NodeDiskRunningFull
+          annotations:
+            description: Device {{ $labels.device }} of node-exporter {{ $labels.namespace
+              }}/{{ $labels.pod }} will be full within the next 24 hours.
+            summary: 'node disk space could be full in next 24 hours'
+          expr: |
+            (node:node_filesystem_usage: > 0.85) and (predict_linear(node:node_filesystem_avail:[6h], 3600 * 24) < 0)
+          for: 30m
+          labels:
+            severity: warning
     - name: persistent_volume_space_low
       rules:
         - alert: PERSISTENTVOLUME
@@ -145,16 +156,33 @@ data:
           annotations:
             description: The PersistentVolume claimed by {{ $labels.persistentvolumeclaim }} in Namespace {{ $labels.namespace }} is only {{ printf "%0.2f" $value }}% free.
             summary: 'persistent volume disk space is less than 10 percent'
-    - name: pod killed or evicted
-      rules:
-        - alert: ContainerKilled
-          expr: time() - container_last_seen > 60
+        - alert: KubePersistentVolumeFullInFourDays
+          annotations:
+            description: Based on recent sampling, the PersistentVolume claimed by {{ $labels.persistentvolumeclaim
+              }} in Namespace {{ $labels.namespace }} is expected to fill up within four
+              days. Currently {{ printf "%0.2f" $value }}% is available.
+            summary: "Based on linear prediction, looks like a PV is going to be full"
+          expr: |
+            100 * (
+              kubelet_volume_stats_available_bytes{job="kubelet"}
+                /
+              kubelet_volume_stats_capacity_bytes{job="kubelet"}
+            ) < 15
+            and
+            predict_linear(kubelet_volume_stats_available_bytes{job="kubelet"}[6h], 4 * 24 * 3600) < 0
           for: 5m
           labels:
             severity: warning
-          annotations:
-            description: "Container killed (instance {{ $labels.instance }})"
-            summary: "Container killed (instance {{ $labels.instance }})"
+    #- name: pod killed or evicted
+    #  rules:
+    #    - alert: ContainerKilled
+    #      expr: time() - container_last_seen > 60
+    #      for: 5m
+    #      labels:
+    #        severity: warning
+    #      annotations:
+    #        description: "Container killed (instance {{ $labels.instance }})"
+    #        summary: "Container killed (instance {{ $labels.instance }})"
   spin_alerting_rules.yml: |
     groups:
     - name: spinnaker-service-is-down
